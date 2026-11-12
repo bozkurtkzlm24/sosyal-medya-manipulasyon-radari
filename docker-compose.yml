@@ -1,0 +1,25 @@
+services:
+  ai-service:
+    build: ./ai-service
+    container_name: berturk-ai-service
+    ports:
+      - "8000:8000"
+    volumes:
+      # BERTurk modelinin her açılışta baştan indirilmemesi için önbellek
+      - huggingface_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+  backend-app:
+    build: .
+    container_name: spring-manipulation-detector
+    ports:
+      - "8080:8080"
+    environment:
+      # Java uygulamasının Docker ağı üzerinden Python konteynerini bulmasını sağlar
+      - AI_SERVICE_URL=http://ai-service:8000/predict
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+
+volumes:
+  huggingface_cache:

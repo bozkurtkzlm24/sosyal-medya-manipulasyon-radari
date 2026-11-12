@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sosyal Medya Tweet Analizi</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { border-radius: 16px; border: none; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+        .tweet-preview { background-color: #ffffff; border-left: 4px solid #1da1f2; font-style: italic; }
+        .table-responsive { max-height: 350px; overflow-y: auto; }
+    </style>
+</head>
+<body class="py-5">
+
+<div class="container" style="max-width: 850px;">
+    <!-- Analiz Kartı -->
+    <div class="card p-4 p-md-5 mb-4">
+        <h3 class="fw-bold text-dark mb-1">🛡️ Sosyal Medya Dedektifi</h3>
+        <p class="text-muted small mb-4">Şüphelendiğiniz tweet metnini veya doğrudan X/Twitter linkini yapıştırın.</p>
+
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Tweet Metni veya Tweet Linki (URL)</label>
+            <textarea id="textInput" class="form-control form-control-lg fs-6" rows="3"
+                      placeholder="Örn: https://x.com/kullanici/status/123456789... veya doğrudan tweet metni"></textarea>
+        </div>
+
+        <button type="button" id="btnAnaliz" class="btn btn-primary btn-lg w-100 fw-bold">Tweet'i İncele</button>
+
+        <!-- Sonuç Bölümü -->
+        <div id="resultCard" class="mt-4 p-4 rounded-3 bg-light border" style="display: none;">
+            <div class="mb-3">
+                <span class="text-muted small fw-bold">İNCELENEN İÇERİK METNİ:</span>
+                <div id="previewText" class="p-3 mt-1 rounded tweet-preview small text-dark"></div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-bold fs-6">Manipülasyon Riski:</span>
+                <span id="riskBadge" class="badge px-3 py-2 fs-6"></span>
+            </div>
+
+            <div class="progress mb-3" style="height: 12px; border-radius: 6px;">
+                <div id="riskBar" class="progress-bar" role="progressbar"></div>
+            </div>
+
+            <div class="small">
+                <div class="d-flex justify-content-between py-2 border-bottom">
+                    <span class="text-muted">🤖 BERTurk Yapay Zeka Teşhisi:</span>
+                    <span id="aiBadge" class="badge bg-secondary">-</span>
+                </div>
+                <div class="d-flex justify-content-between py-2 border-bottom">
+                    <span class="text-muted">📢 Biçimsel / Bağırma / Panik Dili:</span>
+                    <strong id="anomalyScore">%0</strong>
+                </div>
+                <div class="d-flex justify-content-between py-2">
+                    <span class="text-muted">🔍 Yakalanan Şüpheli Kökler:</span>
+                    <strong id="flaggedWords" class="text-danger">-</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analiz Geçmişi Kartı -->
+    <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold text-dark m-0">🕒 Son Analiz Geçmişi</h5>
+            <button onclick="gecmisiTemizle()" class="btn btn-sm btn-outline-danger">Geçmişi Temizle</button>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light small">
+                <tr>
+                    <th style="width: 15%;">Zaman</th>
+                    <th style="width: 45%;">İçerik Özeti</th>
+                    <th style="width: 20%;">Risk</th>
+                    <th style="width: 20%;">Şüpheli Kökler</th>
+                </tr>
+                </thead>
+                <tbody id="gecmisTabloGovde" class="small"></tbody>
+            </table>
+        </div>
+        <div id="bosGecmisUyarisi" class="text-center text-muted py-3 small" style="display: none;">
+            Henüz yapılmış bir analiz kaydı yok.
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", gecmisiGoster);
+
+    document.getElementById("btnAnaliz").addEventListener("click", async function () {
+        const text = document.getElementById("textInput").value;
+
+        if (!text || text.trim() === "") {
+            alert("Lütfen önce bir tweet veya link yapıştırın!");
+            return;
+        }
+
+        const payload = { text: text, accountAgeDays: 0, followerCount: 0, followingCount: 0 };
+
+        try {
+            const res = await fetch('/api/v1/analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.message || "Hata oluştu");
+                return;
+            }
+
+            document.getElementById("resultCard").style.display = "block";
+            document.getElementById("previewText").innerText = data.analyzedText;
+
+            const score = data.totalRiskScore;
+            const bar = document.getElementById("riskBar");
+            const badge = document.getElementById("riskBadge");
+
+            bar.style.width = score + "%";
+            badge.innerText = "%" + score + " - " + data.riskLevel;
+
+            let badgeClass = "bg-success";
+            if (score >= 70) badgeClass = "bg-danger";
+            else if (score >= 40) badgeClass = "bg-warning text-dark";
+
+            bar.className = "progress-bar " + badgeClass;
+            badge.className = "badge px-3 py-2 fs-6 " + badgeClass;
+
+            // BERTurk Yapay Zeka Rozetini Güncelle
+            const aiBadge = document.getElementById("aiBadge");
+            if (data.aiLabel === "POTENTIAL_PROPAGANDA") {
+                aiBadge.className = "badge bg-danger";
+                aiBadge.innerText = "Manipülasyon / Öfke Dili (%" + data.aiConfidence + " Güven)";
+            } else if (data.aiLabel === "ORGANIC_FACTCHECK") {
+                aiBadge.className = "badge bg-info text-dark";
+                aiBadge.innerText = "Organik / Açıklama Tonu (%" + data.aiConfidence + " Güven)";
+            } else {
+                aiBadge.className = "badge bg-secondary";
+                aiBadge.innerText = "Belirsiz / Nötr (%" + data.aiConfidence + ")";
+            }
+
+            document.getElementById("anomalyScore").innerText = "%" + data.linguisticAnomalyScore;
+            document.getElementById("flaggedWords").innerText = data.flaggedKeywords.length > 0 ? data.flaggedKeywords.join(", ") : "Temiz / Şüphe Yok";
+
+            gecmiseEkle({
+                zaman: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                metin: data.analyzedText.length > 50 ? data.analyzedText.substring(0, 50) + "..." : data.analyzedText,
+                skor: score,
+                badgeClass: badgeClass,
+                kelimeler: data.flaggedKeywords.length > 0 ? data.flaggedKeywords.join(", ") : "-"
+            });
+
+        } catch (err) {
+            alert("Sunucuya bağlanırken hata oluştu: " + err);
+        }
+    });
+
+    function gecmiseEkle(kayit) {
+        let gecmis = JSON.parse(localStorage.getItem("analizGecmisi") || "[]");
+        gecmis.unshift(kayit);
+        if (gecmis.length > 10) gecmis.pop();
+        localStorage.setItem("analizGecmisi", JSON.stringify(gecmis));
+        gecmisiGoster();
+    }
+
+    function gecmisiGoster() {
+        const gecmis = JSON.parse(localStorage.getItem("analizGecmisi") || "[]");
+        const tbody = document.getElementById("gecmisTabloGovde");
+        const bosUyari = document.getElementById("bosGecmisUyarisi");
+        tbody.innerHTML = "";
+
+        if (gecmis.length === 0) {
+            bosUyari.style.display = "block";
+            return;
+        }
+        bosUyari.style.display = "none";
+        gecmis.forEach(item => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td class="text-muted">${item.zaman}</td>
+                <td><span title="${item.metin}">${item.metin}</span></td>
+                <td><span class="badge ${item.badgeClass}">%${item.skor}</span></td>
+                <td><span class="text-danger fw-semibold">${item.kelimeler}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function gecmisiTemizle() {
+        localStorage.removeItem("analizGecmisi");
+        gecmisiGoster();
+    }
+</script>
+
+</body>
+</html>
